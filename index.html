@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>指名ルーレット</title>
+<meta name="description" content="授業でランダムに生徒を指名するためのルーレットアプリ">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <h1 class="brand">🎯 指名ルーレット</h1>
+  <nav class="tabs" role="tablist">
+    <button class="tab is-active" role="tab" data-view="spin">ルーレット</button>
+    <button class="tab" role="tab" data-view="roster">名簿</button>
+  </nav>
+  <div class="topbar-right">
+    <button id="spotlightBtn" class="btn btn-sm" type="button" title="設定と履歴を隠して盤面を大きくします">投影モード</button>
+    <label class="class-picker">
+      <span class="sr-only">クラス</span>
+      <select id="classSelect"></select>
+    </label>
+  </div>
+</header>
+
+<!-- ============ ルーレット画面 ============ -->
+<main id="view-spin" class="view is-active">
+  <div class="stage">
+    <div class="wheel-wrap">
+      <div class="pointer" aria-hidden="true"></div>
+      <canvas id="wheel" width="900" height="900" aria-hidden="true"></canvas>
+      <button id="spinBtn" class="spin-btn" type="button">スタート</button>
+    </div>
+
+    <aside class="side">
+      <section class="result-card" id="resultCard">
+        <p class="result-label">今回の指名</p>
+        <p class="result-name" id="resultName">—</p>
+        <div class="result-actions">
+          <button id="skipBtn" class="btn btn-ghost" type="button" hidden>この人をやり直す</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>設定</h2>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="optRemove" checked>
+          <span>一度当たった人を除外する</span>
+        </label>
+        <label class="switch">
+          <input type="checkbox" id="optSound" checked>
+          <span>効果音を鳴らす</span>
+        </label>
+        <div class="field">
+          <label for="optDisplay">名前の表示</label>
+          <select id="optDisplay">
+            <option value="full">フルネーム（山田 太郎）</option>
+            <option value="last">姓のみ（山田）</option>
+            <option value="first">名のみ（太郎）</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>残り <span id="remainCount" class="count">0</span> 人</h2>
+          <button id="resetBtn" class="btn btn-ghost btn-sm" type="button">リセット</button>
+        </div>
+        <ol id="history" class="history"></ol>
+        <p id="historyEmpty" class="muted">まだ指名していません。</p>
+      </section>
+    </aside>
+  </div>
+</main>
+
+<!-- ============ 名簿画面 ============ -->
+<main id="view-roster" class="view">
+  <div class="roster-layout">
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>クラス</h2>
+        <button id="addClassBtn" class="btn btn-sm" type="button">＋ 追加</button>
+      </div>
+      <ul id="classList" class="class-list"></ul>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2 id="rosterTitle">名簿</h2>
+        <div class="panel-head-actions">
+          <button id="importExcelBtn" class="btn btn-sm" type="button">Excelから取り込む</button>
+          <button id="importTextBtn" class="btn btn-sm" type="button">直接入力・貼り付け</button>
+          <button id="addStudentBtn" class="btn btn-sm" type="button">＋ 1人追加</button>
+        </div>
+      </div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" hidden>
+
+      <p class="note">
+        「対象外」にした生徒はルーレットの盤面にも表示されず、抽選されません。
+        名簿には残るので、出席番号や人数の確認には使えます。
+      </p>
+
+      <div class="table-scroll">
+        <table class="roster">
+          <thead>
+            <tr>
+              <th class="col-no">#</th>
+              <th>姓</th>
+              <th>名</th>
+              <th class="col-ex">対象外</th>
+              <th class="col-del"><span class="sr-only">削除</span></th>
+            </tr>
+          </thead>
+          <tbody id="rosterBody"></tbody>
+        </table>
+      </div>
+      <p id="rosterEmpty" class="muted">名簿が空です。Excelから取り込むか、直接入力してください。</p>
+      <div class="roster-foot">
+        <span id="rosterSummary" class="muted"></span>
+        <button id="clearRosterBtn" class="btn btn-ghost btn-sm btn-danger" type="button">この名簿を全部消す</button>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<!-- ============ 貼り付け取り込みダイアログ ============ -->
+<dialog id="textDialog" class="dialog">
+  <form method="dialog">
+    <h2>直接入力・貼り付け</h2>
+    <p class="muted">1行に1人ずつ入力します。Excelの2列（姓・名）をそのまま貼り付けることもできます。</p>
+    <textarea id="textArea" rows="12" placeholder="山田 太郎&#10;佐藤 花子&#10;鈴木 一郎"></textarea>
+    <label class="switch">
+      <input type="checkbox" id="textReplace">
+      <span>今の名簿を置き換える（オフなら追加）</span>
+    </label>
+    <menu class="dialog-actions">
+      <button value="cancel" class="btn btn-ghost" type="submit">キャンセル</button>
+      <button value="ok" id="textOk" class="btn btn-primary" type="submit">取り込む</button>
+    </menu>
+  </form>
+</dialog>
+
+<!-- ============ Excel取り込みダイアログ ============ -->
+<dialog id="excelDialog" class="dialog dialog-wide">
+  <h2>Excelから取り込む</h2>
+  <div class="excel-controls">
+    <label class="field">
+      <span>シート</span>
+      <select id="sheetSelect"></select>
+    </label>
+    <label class="field">
+      <span>姓の列</span>
+      <select id="lastColSelect"></select>
+    </label>
+    <label class="field">
+      <span>名の列</span>
+      <select id="firstColSelect"></select>
+    </label>
+    <label class="switch">
+      <input type="checkbox" id="skipHeader">
+      <span>1行目は見出しなので飛ばす</span>
+    </label>
+  </div>
+  <div class="table-scroll preview-scroll">
+    <table class="roster" id="previewTable"></table>
+  </div>
+  <p id="previewSummary" class="muted"></p>
+  <label class="switch">
+    <input type="checkbox" id="excelReplace" checked>
+    <span>今の名簿を置き換える（オフなら追加）</span>
+  </label>
+  <menu class="dialog-actions">
+    <button id="excelCancel" class="btn btn-ghost" type="button">キャンセル</button>
+    <button id="excelOk" class="btn btn-primary" type="button">取り込む</button>
+  </menu>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
