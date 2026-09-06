@@ -91,16 +91,24 @@
     return [last, first].filter(Boolean).join(' ');
   }
 
-  /** ルーレットの対象になる生徒 */
-  function candidates() {
+  /**
+   * 盤面に並べる生徒。
+   * 「対象外」の生徒も、見た目はほかの生徒とまったく同じように並べる。
+   * 盤に名前が無いこと自体が本人や周囲に分かってしまわないようにするため。
+   */
+  function wheelEntries() {
     const c = activeClass();
     if (!c) return [];
     const picked = pickedSet();
     return c.students.filter(st => {
-      if (st.excluded) return false;                       // 対象外に設定された生徒
       if (state.settings.removeAfterPick && picked.has(st.id)) return false;
       return displayName(st) !== '';
     });
+  }
+
+  /** 実際に当選しうる生徒。盤に並んでいても「対象外」の生徒はここに入らない */
+  function eligible() {
+    return wheelEntries().filter(st => !st.excluded);
   }
 
   /* ---------------- 要素 ---------------- */
@@ -225,7 +233,7 @@
   let rotation = 0; // 度。累積させる
 
   function drawWheel() {
-    const list = candidates();
+    const list = wheelEntries();
     const W = el.canvas.width;
     const R = W / 2;
     const cx = R, cy = R;
@@ -241,7 +249,7 @@
       const c = activeClass();
       const msg = !c || c.students.length === 0
         ? ['名簿がまだ空です', '「名簿」タブから登録してください']
-        : ['対象者がいません', '「リセット」で全員を戻せます'];
+        : ['全員に当たりました', '「リセット」で全員を戻せます'];
       // canvas自体をCSSで回しているので、案内文だけ逆回転させて水平に保つ
       ctx.save();
       ctx.translate(cx, cy);
@@ -313,12 +321,18 @@
 
   function spin() {
     if (spinning) return;
-    const list = candidates();
-    if (list.length === 0) {
+    const list = wheelEntries();
+    const pool = eligible();
+    if (pool.length === 0) {
       drawWheel();
-      toast(activeClass() && activeClass().students.length
-        ? '対象者がいません。リセットしてください'
-        : '先に名簿を登録してください');
+      const c = activeClass();
+      if (!c || c.students.length === 0) {
+        toast('先に名簿を登録してください');
+      } else if (list.length === 0) {
+        toast('全員に当たりました。「リセット」で戻せます');
+      } else {
+        toast('抽選できる生徒がいません');
+      }
       return;
     }
 
@@ -332,9 +346,10 @@
     el.resultName.textContent = '…';
     el.resultCard.classList.remove('is-hit');
 
-    const n = list.length;
-    const seg = 360 / n;
-    const winner = list[Math.floor(Math.random() * n)];
+    // 当選者は「対象外」を除いた中から選び、
+    // 止める位置はその生徒が盤面で何番目にいるかから逆算する
+    const seg = 360 / list.length;
+    const winner = pool[Math.floor(Math.random() * pool.length)];
     const idx = list.indexOf(winner);
 
     // 当選セグメントの中心が真上（ポインタ位置）に来る回転量を求める
@@ -429,7 +444,7 @@
     });
 
     el.historyEmpty.hidden = order.length > 0;
-    el.remainCount.textContent = String(candidates().length);
+    el.remainCount.textContent = String(eligible().length);
   }
 
   function renderClassSelect() {
