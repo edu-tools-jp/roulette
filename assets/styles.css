@@ -14,6 +14,8 @@
 
 * { box-sizing: border-box; }
 
+[hidden] { display: none !important; }
+
 html, body {
   height: 100%;
 }
@@ -50,11 +52,15 @@ body {
 
 .brand {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 19px;
   font-weight: 700;
   letter-spacing: .02em;
   white-space: nowrap;
 }
+.brand-icon { width: 28px; height: 28px; flex: none; }
 
 .tabs { display: flex; gap: 4px; }
 
@@ -73,6 +79,8 @@ body {
 .tab.is-active { background: var(--accent); color: var(--accent-ink); }
 
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+/* 幅が狭くてもボタンの文字は折り返さず、縮むのはクラスの選択欄だけにする */
+.topbar-right .btn { flex: none; white-space: nowrap; }
 
 .class-picker select,
 .field select {
@@ -416,6 +424,59 @@ tr.is-excluded input[type="text"] { color: var(--ink-soft); }
 }
 .excel-controls .field { margin-top: 0; }
 
+/* ---------- 更新 ---------- */
+.update-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.update-btn .ic {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.update-btn:disabled { opacity: .6; cursor: default; }
+/* 新しい版があるときは緑色に光らせる（PDFノートと同じ合図） */
+.update-btn.has-update {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #fff;
+  animation: update-glow 2s ease-in-out infinite;
+}
+.update-btn.has-update:hover { background: #15803d; }
+@keyframes update-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, .45); }
+  50%      { box-shadow: 0 0 0 6px rgba(22, 163, 74, 0); }
+}
+
+.update-notes {
+  max-height: 46vh;
+  overflow-y: auto;
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: #f4f6fb;
+  border-radius: 10px;
+}
+.update-notes section + section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.update-notes h3 { margin: 0 0 4px; font-size: 14px; }
+.update-notes ul { margin: 0; padding-left: 1.2em; font-size: 13px; }
+.update-notes li + li { margin-top: 2px; }
+
+.build-stamp {
+  margin: 12px 0 0;
+  font-size: 11px;
+  color: var(--ink-soft);
+  text-align: right;
+}
+
 /* ---------- トースト ---------- */
 .toast {
   position: fixed;
@@ -456,10 +517,12 @@ body.is-spotlight .result-name { font-size: clamp(32px, 5vw, 76px); }
   .wheel-wrap { max-width: min(80vw, 520px); }
   .topbar { flex-wrap: wrap; gap: 10px 14px; }
   .topbar-right { margin-left: 0; width: 100%; }
-  .class-picker select { width: 100%; }
+  .class-picker { flex: 1; min-width: 0; }
+  .class-picker select { width: 100%; min-width: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .result-card.is-hit { animation: none; }
+  .update-btn.has-update { animation: none; }
   .spin-btn { transition: none; }
 }

@@ -7,6 +7,14 @@
 
   const STORAGE_KEY = 'roulette.v1';
 
+  // ★ 公開のたびに、この値と service-worker.js の VERSION を「同じ値」に変えること。
+  //    食い違うと「表示中のファイルが古いようです」の案内が出る（それが食い違い検知のしくみ）。
+  const APP_VERSION = '20260916a';
+
+  /* 更新内容は release-notes.json に置く（サーバ上の最新をそのつど読む）。
+     公開のたびに、いちばん上へ今回の版の項目を足すこと。 */
+  const NOTES_URL = 'release-notes.json';
+
   /* ---------------- 状態 ---------------- */
 
   const defaultState = () => ({
@@ -158,6 +166,10 @@
     excelCancel: $('#excelCancel'),
     excelOk: $('#excelOk'),
     spotlightBtn: $('#spotlightBtn'),
+    updateBtn: $('#updateBtn'),
+    updateDialog: $('#updateDialog'),
+    updateLead: $('#updateLead'),
+    updateNotes: $('#updateNotes'),
     toast: $('#toast')
   };
 
@@ -166,11 +178,11 @@
   /* ---------------- トースト ---------------- */
 
   let toastTimer = null;
-  function toast(msg) {
+  function toast(msg, ms) {
     el.toast.textContent = msg;
     el.toast.classList.add('is-shown');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.toast.classList.remove('is-shown'), 2600);
+    toastTimer = setTimeout(() => el.toast.classList.remove('is-shown'), ms || 2600);
   }
 
   /* ---------------- 効果音（音声ファイル不要） ---------------- */
@@ -931,10 +943,206 @@
     spin();
   });
 
+  /* ---------------- 更新（Service Worker） ---------------- */
+  // PDFノートと同じしくみ。GitHubに新しい版を上げると、起動時と1時間ごとの確認で
+  // 裏で取り込まれ、「更新」ボタンが緑色になる。押すと更新内容を見せてから切り替える。
+  // （押さなくても、アプリを全部閉じて開き直せば新しい版になる）
+
+  let swReg = null, waitingWorker = null, swReloading = false, updateRequested = false;
+
+  /* 今より新しい版の更新内容だけを取り出す。
+     いちばん上から見ていき、いま動いている版に当たったらそこで止める。 */
+  async function fetchNewNotes() {
+    try {
+      const res = await fetch(NOTES_URL + '?t=' + Date.now(), { cache: 'no-store' });
+      if (!res.ok) return null;
+      const all = await res.json();
+      if (!Array.isArray(all)) return null;
+      const fresh = [];
+      for (const n of all) { if (n && n.version === APP_VERSION) break; if (n) fresh.push(n); }
+      return fresh;
+    } catch (e) { return null; }
+  }
+
+  function confirmUpdate(notes) {
+    const has = !!(notes && notes.length);
+    el.updateLead.textContent = (has
+      ? '更新すると、次のように変わります。'
+      : '更新内容を読み込めませんでした（ネット接続を確認してください）。')
+      + '画面が再読み込みされ、今回の指名の記録はリセットされます（名簿と設定はそのまま残ります）。';
+    el.updateNotes.innerHTML = '';
+    el.updateNotes.hidden = !has;
+    (notes || []).forEach(n => {
+      const sec = document.createElement('section');
+      const h = document.createElement('h3');
+      h.textContent = n.title || n.version || '';
+      const ul = document.createElement('ul');
+      (n.items || []).forEach(t => {
+        const li = document.createElement('li');
+        li.textContent = t;
+        ul.appendChild(li);
+      });
+      sec.append(h, ul);
+      el.updateNotes.appendChild(sec);
+    });
+    return new Promise(resolve => {
+      el.updateDialog.returnValue = '';
+      el.updateDialog.addEventListener('close',
+        () => resolve(el.updateDialog.returnValue === 'ok'), { once: true });
+      el.updateDialog.showModal();
+    });
+  }
+
+  /* 更新するか、内容を見せたうえで聞く */
+  async function askAndUpdate(worker) {
+    setUpdateBusy(true);
+    const notes = await fetchNewNotes();
+    setUpdateBusy(false);
+    if (await confirmUpdate(notes)) {
+      updateRequested = true;
+      worker.postMessage('skipWaiting');   // → controllerchange で自動リロード
+    }
+  }
+
+  function setUpdateBusy(on) {
+    const b = el.updateBtn;
+    b.disabled = on;
+    b.querySelector('.lbl').textContent = on ? '確認中…'
+      : (b.classList.contains('has-update') ? '更新（新版あり）' : '更新');
+  }
+
+  /* 版番号は APP_VERSION から入れる（手書きの重複を作らない） */
+  function showBuildStamp() {
+    document.querySelectorAll('.build-stamp').forEach(n => {
+      n.textContent = 'バージョン ' + APP_VERSION;
+    });
+  }
+
+  async function initServiceWorker() {
+    const upd = el.updateBtn;
+    // http/https のときだけ（GitHub Pages 等）。ファイルを直接開いたときは使えない
+    if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) {
+      upd.hidden = true;
+      return;
+    }
+    upd.hidden = false;
+    upd.title = '最新版に更新する（現在 ' + APP_VERSION + '）';
+    // 初めて開いたときは、登録直後に clients.claim() でも controllerchange が起きる。
+    // そこで再読み込みすると入力中の内容が消えるので、更新のときだけ読み込み直す
+    const hadController = !!navigator.serviceWorker.controller;
+    try {
+      swReg = await navigator.serviceWorker.register('service-worker.js');
+      // ブラウザの設定や学校のポリシーで Service Worker が使えないことがある
+      if (!swReg) { upd.title = 'オフライン機能を有効にできませんでした'; return; }
+      if (swReg.waiting && navigator.serviceWorker.controller) markUpdateReady(swReg.waiting);
+      swReg.addEventListener('updatefound', () => {
+        const nw = swReg.installing;
+        if (!nw) return;
+        nw.addEventListener('statechange', () => {
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) markUpdateReady(nw);
+        });
+      });
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!hadController && !updateRequested) return;
+        if (swReloading) return;
+        swReloading = true;
+        location.reload();
+      });
+      // 表示中のファイルと Service Worker のバージョンが食い違っていたら知らせる
+      // （キャッシュの取り違えで「番号だけ新しい」状態になっていないかの確認）
+      navigator.serviceWorker.addEventListener('message', (ev) => {
+        const d = ev.data;
+        if (d && d.type === 'version' && d.version && d.version !== APP_VERSION) {
+          toast('表示中のファイルが古いようです。Ctrl+Shift+R で読み込み直してください', 7000);
+        }
+      });
+      setTimeout(() => {
+        try {
+          if (navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage('version');
+        } catch (e) { /* 確認できなくても動作には影響しない */ }
+      }, 2500);
+      // たまに自動で更新チェック（起動時・以後1時間ごと）
+      setTimeout(() => { try { swReg.update(); } catch (e) {} }, 4000);
+      setInterval(() => { try { swReg && swReg.update(); } catch (e) {} }, 60 * 60 * 1000);
+    } catch (e) {
+      console.error('Service Worker 登録失敗', e);
+      upd.title = 'オフライン機能を有効にできませんでした';
+    }
+  }
+
+  function markUpdateReady(worker) {
+    waitingWorker = worker;
+    const upd = el.updateBtn;
+    upd.hidden = false;
+    upd.classList.add('has-update');
+    upd.querySelector('.lbl').textContent = '更新（新版あり）';
+    upd.title = '新しい版があります。押すと最新版になります';
+  }
+
+  /* 新しい版が見つかって、入り終わるまで待つ。
+     見つからなければ FIND_MS ほどで「無し」と判断し、待たせすぎない。
+     見つかったら、入り終わるまで最大 INSTALL_MS 待つ。 */
+  const FIND_MS = 2000, INSTALL_MS = 30000;
+  function waitForNewWorker(reg) {
+    return new Promise((resolve) => {
+      let settled = false, tFind = null, tInstall = null;
+      const finish = (w) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(tFind); clearTimeout(tInstall);
+        reg.removeEventListener('updatefound', onFound);
+        resolve(w || null);
+      };
+      const watch = (nw) => {
+        if (!nw) return;
+        clearTimeout(tFind);                       // 見つかったので「無し」の判断はやめる
+        tInstall = setTimeout(() => finish(reg.waiting || null), INSTALL_MS);
+        if (nw.state === 'installed') { finish(reg.waiting || nw); return; }
+        nw.addEventListener('statechange', () => {
+          if (nw.state === 'installed') finish(reg.waiting || nw);
+          else if (nw.state === 'redundant') finish(null);   // 入れ替えに失敗した
+        });
+      };
+      const onFound = () => watch(reg.installing);
+      if (reg.waiting) { finish(reg.waiting); return; }
+      reg.addEventListener('updatefound', onFound);
+      tFind = setTimeout(() => finish(reg.waiting || waitingWorker), FIND_MS);
+      watch(reg.installing);                       // もう始まっていることもある
+    });
+  }
+
+  async function checkForUpdate() {
+    if (!swReg) { toast('この開き方では更新機能は使えません（GitHub Pages のURLで開いてください）'); return; }
+    // すでに新版が待機していれば、それを適用
+    const ready = waitingWorker || swReg.waiting;
+    if (ready) { await askAndUpdate(ready); return; }
+    // サーバに最新があるか確認
+    setUpdateBusy(true);
+    try {
+      const watching = waitForNewWorker(swReg);   // update() より先に見張りを始める
+      try { await swReg.update(); } catch (e) { /* 見張りの結果で判断する */ }
+      const w = await watching;
+      setUpdateBusy(false);
+      if (w) {
+        await askAndUpdate(w);
+      } else {
+        toast('最新の状態です（' + APP_VERSION + '）');
+      }
+    } catch (e) {
+      setUpdateBusy(false);
+      console.error(e);
+      toast('更新の確認に失敗しました。ネット接続を確認してください');
+    }
+  }
+
+  el.updateBtn.addEventListener('click', checkForUpdate);
+
   /* ---------------- 起動 ---------------- */
 
   el.optRemove.checked = state.settings.removeAfterPick;
   el.optSound.checked = state.settings.sound;
   el.optDisplay.value = state.settings.display;
   renderAll();
+  showBuildStamp();
+  initServiceWorker();
 })();

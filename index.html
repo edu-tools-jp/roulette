@@ -5,18 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>指名ルーレット</title>
 <meta name="description" content="授業でランダムに生徒を指名するためのルーレットアプリ">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
+<meta name="theme-color" content="#ffffff">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="icons/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
 
 <header class="topbar">
-  <h1 class="brand">🎯 指名ルーレット</h1>
+  <h1 class="brand"><img class="brand-icon" src="icons/favicon.svg" alt="">指名ルーレット</h1>
   <nav class="tabs" role="tablist">
     <button class="tab is-active" role="tab" data-view="spin">ルーレット</button>
     <button class="tab" role="tab" data-view="roster">名簿</button>
   </nav>
   <div class="topbar-right">
+    <button id="updateBtn" class="btn btn-sm update-btn" type="button" title="最新版に更新する" hidden>
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4.5v5h-5"/></svg>
+      <span class="lbl">更新</span>
+    </button>
     <button id="spotlightBtn" class="btn btn-sm" type="button" title="設定と履歴を隠して盤面を大きくします">投影モード</button>
     <label class="class-picker">
       <span class="sr-only">クラス</span>
@@ -63,6 +72,7 @@
             <option value="first">名のみ（太郎）</option>
           </select>
         </div>
+        <p class="build-stamp"></p>
       </section>
 
       <section class="panel">
@@ -179,6 +189,19 @@
     <button id="excelCancel" class="btn btn-ghost" type="button">キャンセル</button>
     <button id="excelOk" class="btn btn-primary" type="button">取り込む</button>
   </menu>
+</dialog>
+
+<!-- ============ 更新の確認ダイアログ ============ -->
+<dialog id="updateDialog" class="dialog">
+  <form method="dialog">
+    <h2>新しいバージョンがあります</h2>
+    <p id="updateLead" class="muted"></p>
+    <div id="updateNotes" class="update-notes"></div>
+    <menu class="dialog-actions">
+      <button value="later" class="btn btn-ghost" type="submit">あとで</button>
+      <button value="ok" class="btn btn-primary" type="submit">更新する</button>
+    </menu>
+  </form>
 </dialog>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>

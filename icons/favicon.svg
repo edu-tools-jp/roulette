@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+    <defs>
+      <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#eef1f8"/>
+      </linearGradient>
+      <linearGradient id="ring" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#34457a"/><stop offset="1" stop-color="#141c3a"/>
+      </linearGradient>
+      <linearGradient id="pin" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ff7d6e"/><stop offset="1" stop-color="#e0363c"/>
+      </linearGradient>
+      <radialGradient id="shade" cx="256" cy="270" r="143" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stop-color="#ffffff" stop-opacity=".30"/>
+        <stop offset=".55" stop-color="#ffffff" stop-opacity="0"/>
+        <stop offset="1" stop-color="#081030" stop-opacity=".16"/>
+      </radialGradient>
+      <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+        <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#141c3a" flood-opacity=".28"/>
+      </filter>
+      <filter id="shadowSm" x="-40%" y="-40%" width="180%" height="180%">
+        <feDropShadow dx="0" dy="3" stdDeviation="3.5" flood-color="#141c3a" flood-opacity=".30"/>
+      </filter>
+      <filter id="tileShadow" x="-10%" y="-10%" width="120%" height="125%">
+        <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#141c3a" flood-opacity=".16"/>
+      </filter>
+    </defs><g transform="translate(256 256) scale(1.42) translate(-256 -260)">
+    <g filter="url(#shadow)">
+      <circle cx="256" cy="270" r="160" fill="url(#ring)"/>
+    </g>
+    <circle cx="285.56" cy="121.41" r="3.7" fill="#ffffff"/><circle cx="340.17" cy="144.03" r="3.7" fill="#ffd76e"/><circle cx="381.97" cy="185.83" r="3.7" fill="#ffffff"/><circle cx="404.59" cy="240.44" r="3.7" fill="#ffd76e"/><circle cx="404.59" cy="299.56" r="3.7" fill="#ffffff"/><circle cx="381.97" cy="354.17" r="3.7" fill="#ffd76e"/><circle cx="340.17" cy="395.97" r="3.7" fill="#ffffff"/><circle cx="285.56" cy="418.59" r="3.7" fill="#ffd76e"/><circle cx="226.44" cy="418.59" r="3.7" fill="#ffffff"/><circle cx="171.83" cy="395.97" r="3.7" fill="#ffd76e"/><circle cx="130.03" cy="354.17" r="3.7" fill="#ffffff"/><circle cx="107.41" cy="299.56" r="3.7" fill="#ffd76e"/><circle cx="107.41" cy="240.44" r="3.7" fill="#ffffff"/><circle cx="130.03" cy="185.83" r="3.7" fill="#ffd76e"/><circle cx="171.83" cy="144.03" r="3.7" fill="#ffffff"/><circle cx="226.44" cy="121.41" r="3.7" fill="#ffd76e"/>
+    <path d="M256 270L201.28 137.89A143 143 0 0 1 310.72 137.89Z" fill="#3d8bff"/><path d="M256 270L310.72 137.89A143 143 0 0 1 388.11 215.28Z" fill="#cdd6ff"/><path d="M256 270L388.11 215.28A143 143 0 0 1 388.11 324.72Z" fill="#6a5cf5"/><path d="M256 270L388.11 324.72A143 143 0 0 1 310.72 402.11Z" fill="#e4d8ff"/><path d="M256 270L310.72 402.11A143 143 0 0 1 201.28 402.11Z" fill="#9b5cf6"/><path d="M256 270L201.28 402.11A143 143 0 0 1 123.89 324.72Z" fill="#d4eaff"/><path d="M256 270L123.89 324.72A143 143 0 0 1 123.89 215.28Z" fill="#2aa8ff"/><path d="M256 270L123.89 215.28A143 143 0 0 1 201.28 137.89Z" fill="#d9d6ff"/>
+    <g stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"><line x1="256" y1="270" x2="201.28" y2="137.89"/><line x1="256" y1="270" x2="310.72" y2="137.89"/><line x1="256" y1="270" x2="388.11" y2="215.28"/><line x1="256" y1="270" x2="388.11" y2="324.72"/><line x1="256" y1="270" x2="310.72" y2="402.11"/><line x1="256" y1="270" x2="201.28" y2="402.11"/><line x1="256" y1="270" x2="123.89" y2="324.72"/><line x1="256" y1="270" x2="123.89" y2="215.28"/></g>
+    <circle cx="256" cy="270" r="143" fill="url(#shade)"/>
+    <circle cx="256" cy="270" r="143" fill="none" stroke="rgba(10,18,50,.18)" stroke-width="2"/>
+    <g filter="url(#shadowSm)"><circle cx="256" cy="270" r="31" fill="#ffffff"/></g>
+    <circle cx="256" cy="270" r="13.5" fill="url(#ring)"/>
+    <circle cx="252" cy="265.5" r="3.6" fill="#ffffff" opacity=".55"/>
+    <g filter="url(#shadowSm)">
+      <path d="M229 96H283L256 146Z" fill="url(#pin)" stroke="url(#pin)" stroke-width="12" stroke-linejoin="round"/>
+    </g>
+    <path d="M232 94.5H262" stroke="#ffffff" stroke-opacity=".6" stroke-width="3.5" stroke-linecap="round"/></g></svg>
