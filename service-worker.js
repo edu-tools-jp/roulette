@@ -7,8 +7,11 @@
  *  ★ 新しい版を GitHub に上げるときは、必ず下の VERSION を書き換えてください（例: 日付）。
  *    VERSION が変わらないと、ブラウザは「更新なし」と判断します。
  */
-const VERSION = '20260916a';                 // ← 公開のたびに変更する（assets/app.js の APP_VERSION と同じ値に）
-const CACHE = 'roulette-' + VERSION;
+const VERSION = '20260916b';                 // ← 公開のたびに変更する（assets/app.js の APP_VERSION と同じ値に）
+// キャッシュ置き場は edu-tools-jp.github.io 全体で共有されている（PDFノートなど他のアプリも同じ場所）。
+// ほかのアプリの分まで消すとオフラインで起動できなくなるので、消すのはこの接頭辞の古い版だけにする。
+const CACHE_PREFIX = 'roulette-';
+const CACHE = CACHE_PREFIX + VERSION;
 
 // キャッシュするファイル（SW自身の場所からの相対パス）
 const ASSETS = [
@@ -45,7 +48,9 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys
+        .filter((k) => k.startsWith(CACHE_PREFIX) && k !== CACHE)
+        .map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });

@@ -104,10 +104,10 @@ PDFノートと同じ手順です。
 
    ```js
    // service-worker.js
-   const VERSION = '20260916a';       // ← これを新しい値に変える
+   const VERSION = '20260916b';       // ← これを新しい値に変える
 
    // assets/app.js
-   const APP_VERSION = '20260916a';   // ← 上とまったく同じ値にする
+   const APP_VERSION = '20260916b';   // ← 上とまったく同じ値にする
    ```
 
    書式は「更新日＋枝番」＝ `20260916a`（同じ日に2回目なら `20260916b`）。
