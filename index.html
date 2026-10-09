@@ -72,6 +72,17 @@
             <option value="first">名のみ（太郎）</option>
           </select>
         </div>
+        <label class="switch">
+          <input type="checkbox" id="optFurigana" checked>
+          <span>ふりがなを表示する</span>
+        </label>
+        <div class="field field-row">
+          <label for="optKanaStyle">ふりがなの文字</label>
+          <select id="optKanaStyle">
+            <option value="hira">ひらがな</option>
+            <option value="kata">カタカナ</option>
+          </select>
+        </div>
         <p class="build-stamp"></p>
       </section>
 
@@ -122,6 +133,8 @@
               <th class="col-no">#</th>
               <th>姓</th>
               <th>名</th>
+              <th class="col-kana">せい</th>
+              <th class="col-kana">めい</th>
               <th class="col-ex">対象外</th>
               <th class="col-del"><span class="sr-only">削除</span></th>
             </tr>
@@ -143,8 +156,11 @@
 <dialog id="textDialog" class="dialog">
   <form method="dialog">
     <h2>直接入力・貼り付け</h2>
-    <p class="muted">1行に1人ずつ入力します。Excelの2列（姓・名）をそのまま貼り付けることもできます。</p>
-    <textarea id="textArea" rows="12" placeholder="山田 太郎&#10;佐藤 花子&#10;鈴木 一郎"></textarea>
+    <p class="muted">
+      1行に1人ずつ入力します。ふりがなは名前のあとに続けるか、（ ）で囲んで書けます。
+      Excelの列（姓・名・せい・めい）をそのまま貼り付けることもできます。
+    </p>
+    <textarea id="textArea" rows="12" placeholder="山田 太郎&#10;佐藤 花子 さとう はなこ&#10;鈴木 一郎（すずき いちろう）"></textarea>
     <label class="switch">
       <input type="checkbox" id="textReplace">
       <span>今の名簿を置き換える（オフなら追加）</span>
@@ -172,11 +188,24 @@
       <span>名の列</span>
       <select id="firstColSelect"></select>
     </label>
+    <label class="field">
+      <span>せい（ふりがな）</span>
+      <select id="kanaLastColSelect"></select>
+    </label>
+    <label class="field">
+      <span>めい（ふりがな）</span>
+      <select id="kanaFirstColSelect"></select>
+    </label>
     <label class="switch">
       <input type="checkbox" id="skipHeader">
       <span>1行目は見出しなので飛ばす</span>
     </label>
   </div>
+  <p id="phoneticNote" class="note" hidden>
+    ふりがなの列が無いため、Excelで名前を入力したときの読みを使っています。
+    変換のしかたによっては違う読みが入っていることがあるので、下の一覧で確かめてください。
+    取り込んだあとも名簿の画面で直せます。
+  </p>
   <div class="table-scroll preview-scroll">
     <table class="roster" id="previewTable"></table>
   </div>

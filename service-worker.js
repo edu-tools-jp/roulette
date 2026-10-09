@@ -7,7 +7,7 @@
  *  ★ 新しい版を GitHub に上げるときは、必ず下の VERSION を書き換えてください（例: 日付）。
  *    VERSION が変わらないと、ブラウザは「更新なし」と判断します。
  */
-const VERSION = '20260916b';                 // ← 公開のたびに変更する（assets/app.js の APP_VERSION と同じ値に）
+const VERSION = '20261009a';                 // ← 公開のたびに変更する（assets/app.js の APP_VERSION と同じ値に）
 // キャッシュ置き場は edu-tools-jp.github.io 全体で共有されている（PDFノートなど他のアプリも同じ場所）。
 // ほかのアプリの分まで消すとオフラインで起動できなくなるので、消すのはこの接頭辞の古い版だけにする。
 const CACHE_PREFIX = 'roulette-';

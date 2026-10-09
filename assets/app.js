@@ -9,7 +9,7 @@
 
   // ★ 公開のたびに、この値と service-worker.js の VERSION を「同じ値」に変えること。
   //    食い違うと「表示中のファイルが古いようです」の案内が出る（それが食い違い検知のしくみ）。
-  const APP_VERSION = '20260916b';
+  const APP_VERSION = '20261009a';
 
   /* 更新内容は release-notes.json に置く（サーバ上の最新をそのつど読む）。
      公開のたびに、いちばん上へ今回の版の項目を足すこと。 */
@@ -20,7 +20,7 @@
   const defaultState = () => ({
     version: 1,
     activeClassId: null,
-    settings: { removeAfterPick: true, sound: true, display: 'full' },
+    settings: { removeAfterPick: true, sound: true, display: 'full', furigana: true, kanaStyle: 'hira' },
     classes: []
   });
 
@@ -91,12 +91,77 @@
   }
 
   function displayName(st, mode) {
+    return nameParts(st, mode).map(p => p.text).join(' ');
+  }
+
+  /* --- ふりがな ---
+     名簿には入力・取り込みしたままの文字で持ち、表示するときに
+     設定（ひらがな／カタカナ）にそろえる。校務システムの書き出しはカタカナが多いため。 */
+
+  /** カタカナ（半角も）をひらがなに */
+  function toHira(s) {
+    return String(s || '').normalize('NFKC')
+      .replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+  }
+
+  function toKata(s) {
+    return String(s || '').normalize('NFKC')
+      .replace(/[\u3041-\u3096]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60));
+  }
+
+  /** 設定（ひらがな／カタカナ）の文字にそろえる */
+  function styleKana(s) {
+    if (!s) return '';
+    return state.settings.kanaStyle === 'kata' ? toKata(s) : toHira(s);
+  }
+
+  /** ひらがな・カタカナ・長音・空白だけでできているか */
+  function isKanaText(s) {
+    return /^[\u3040-\u309F\u30A0-\u30FF\uFF66-\uFF9F\s・]+$/.test(String(s || '').trim());
+  }
+
+  /** 漢字の上に出すふりがな。表示しないときや、名前がかなで読みと同じときは空にする */
+  function rubyFor(base, kana) {
+    if (!state.settings.furigana || !kana) return '';
+    const k = styleKana(kana);
+    return toHira(k).replace(/\s/g, '') === toHira(base).replace(/\s/g, '') ? '' : k.trim();
+  }
+
+  /**
+   * 表示する名前を「文字」と「ふりがな」の組で返す（フルネームなら姓と名の2組）。
+   * 名前の表示（フルネーム／姓のみ／名のみ）に合わせて、ふりがなも同じ部分だけを出す。
+   */
+  function nameParts(st, mode) {
     const m = mode || state.settings.display;
-    const last = (st.last || '').trim();
-    const first = (st.first || '').trim();
-    if (m === 'last') return last || first;
-    if (m === 'first') return first || last;
-    return [last, first].filter(Boolean).join(' ');
+    const last = (st.last || '').trim(), first = (st.first || '').trim();
+    const kl = (st.kanaLast || '').trim(), kf = (st.kanaFirst || '').trim();
+    let parts;
+    if (m === 'last') parts = last ? [[last, kl]] : [[first, kf]];
+    else if (m === 'first') parts = first ? [[first, kf]] : [[last, kl]];
+    else {
+      parts = [];
+      if (last) parts.push([last, kl]);
+      if (first) parts.push([first, kf]);
+      // フルネームが1つの欄に入っていて、読みだけ姓・名に分かれているときは、読みをまとめて振る
+      if (parts.length === 1) parts[0][1] = [kl, kf].filter(Boolean).join(' ');
+    }
+    return parts.filter(p => p[0]).map(([text, kana]) => ({ text, kana: rubyFor(text, kana) }));
+  }
+
+  /** 要素の中に、ふりがな付きの名前を入れる */
+  function renderName(target, st) {
+    const parts = nameParts(st);
+    target.textContent = '';
+    parts.forEach((p, i) => {
+      if (i) target.append(' ');
+      if (!p.kana) { target.append(p.text); return; }
+      const ruby = document.createElement('ruby');
+      const rt = document.createElement('rt');
+      rt.textContent = p.kana;
+      ruby.append(p.text, rt);
+      target.append(ruby);
+    });
+    target.classList.toggle('has-ruby', parts.some(p => p.kana));
   }
 
   /**
@@ -135,6 +200,8 @@
     optRemove: $('#optRemove'),
     optSound: $('#optSound'),
     optDisplay: $('#optDisplay'),
+    optFurigana: $('#optFurigana'),
+    optKanaStyle: $('#optKanaStyle'),
     remainCount: $('#remainCount'),
     history: $('#history'),
     historyEmpty: $('#historyEmpty'),
@@ -159,6 +226,9 @@
     sheetSelect: $('#sheetSelect'),
     lastColSelect: $('#lastColSelect'),
     firstColSelect: $('#firstColSelect'),
+    kanaLastColSelect: $('#kanaLastColSelect'),
+    kanaFirstColSelect: $('#kanaFirstColSelect'),
+    phoneticNote: $('#phoneticNote'),
     skipHeader: $('#skipHeader'),
     previewTable: $('#previewTable'),
     previewSummary: $('#previewSummary'),
@@ -326,6 +396,25 @@
     el.canvas.style.transform = `rotate(${rotation}deg)`;
   }
 
+  /* ---------------- 結果欄 ---------------- */
+
+  let resultId = null;   // いま結果欄に出している生徒
+
+  function showResultText(text) {
+    resultId = null;
+    el.resultName.textContent = text;
+    el.resultName.classList.remove('has-ruby');
+  }
+
+  /** ふりがなや名前の表示を切り替えたときも、出ている結果をその場で描き直す */
+  function renderResult() {
+    if (!resultId) return;
+    const c = activeClass();
+    const st = c && c.students.find(x => x.id === resultId);
+    if (st) renderName(el.resultName, st);
+    else showResultText('—');
+  }
+
   /* ---------------- 抽選 ---------------- */
 
   let spinning = false;
@@ -355,7 +444,7 @@
     spinning = true;
     el.spinBtn.disabled = true;
     el.skipBtn.hidden = true;
-    el.resultName.textContent = '…';
+    showResultText('…');
     el.resultCard.classList.remove('is-hit');
 
     // 当選者は「対象外」を除いた中から選び、
@@ -401,7 +490,8 @@
   function finish(winner) {
     spinning = false;
     el.spinBtn.disabled = false;
-    el.resultName.textContent = displayName(winner);
+    resultId = winner.id;
+    renderResult();
     el.resultCard.classList.add('is-hit');
     el.skipBtn.hidden = false;
     fanfare();
@@ -421,7 +511,7 @@
     if (!lastId) return;
     order.pop();
     picked.delete(lastId);
-    el.resultName.textContent = '—';
+    showResultText('—');
     el.resultCard.classList.remove('is-hit');
     el.skipBtn.hidden = true;
     renderHistory();
@@ -533,6 +623,20 @@
       inFirst.addEventListener('input', () => { st.first = inFirst.value; save(); refreshSpin(); });
       tdFirst.appendChild(inFirst);
 
+      const kanaCell = (key, ph) => {
+        const td = document.createElement('td');
+        td.className = 'col-kana';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = st[key] || '';
+        input.placeholder = ph;
+        input.addEventListener('input', () => { st[key] = input.value; save(); refreshSpin(); });
+        td.appendChild(input);
+        return td;
+      };
+      const tdKanaLast = kanaCell('kanaLast', 'せい');
+      const tdKanaFirst = kanaCell('kanaFirst', 'めい');
+
       const tdEx = document.createElement('td');
       tdEx.className = 'col-ex';
       const cb = document.createElement('input');
@@ -563,7 +667,7 @@
       });
       tdDel.appendChild(del);
 
-      tr.append(tdNo, tdLast, tdFirst, tdEx, tdDel);
+      tr.append(tdNo, tdLast, tdFirst, tdKanaLast, tdKanaFirst, tdEx, tdDel);
       el.rosterBody.appendChild(tr);
     });
 
@@ -578,6 +682,7 @@
   function refreshSpin() {
     drawWheel();
     renderHistory();
+    if (!spinning) renderResult();
   }
 
   function renderAll() {
@@ -594,7 +699,7 @@
     save();
     rotation = 0;
     applyRotation();
-    el.resultName.textContent = '—';
+    showResultText('—');
     el.skipBtn.hidden = true;
     renderAll();
   }
@@ -640,15 +745,19 @@
 
   /* ---------------- 名簿の取り込み ---------------- */
 
-  function makeStudent(last, first) {
-    return { id: uid(), last: (last || '').trim(), first: (first || '').trim(), excluded: false };
+  function makeStudent(last, first, kanaLast, kanaFirst) {
+    const t = v => String(v || '').trim();
+    return {
+      id: uid(), last: t(last), first: t(first),
+      kanaLast: t(kanaLast), kanaFirst: t(kanaFirst), excluded: false
+    };
   }
 
   function applyImport(rows, replace) {
     const c = activeClass();
     if (!c) return;
     const students = rows
-      .map(r => makeStudent(r.last, r.first))
+      .map(r => makeStudent(r.last, r.first, r.kanaLast, r.kanaFirst))
       .filter(s => s.last || s.first);
     if (students.length === 0) {
       toast('取り込める名前がありませんでした');
@@ -668,19 +777,55 @@
 
   /* --- 貼り付け取り込み --- */
 
+  /** 名前と読みの組を作る。読みが1つにまとまっていれば空白で姓・名に分ける */
+  function withKana(name, kana) {
+    const k = splitName(kana) || { last: '', first: '' };
+    return { last: name.last, first: name.first, kanaLast: k.last, kanaFirst: k.first };
+  }
+
+  /**
+   * 1行に1人。次の書き方を受け付ける。
+   *   山田 太郎
+   *   山田 太郎 やまだ たろう
+   *   山田 太郎（やまだ たろう）
+   *   Excelからの貼り付け（タブ区切り）：姓 名 / 姓 名 せい めい / 氏名 ふりがな
+   * 先頭の出席番号（数字だけの欄）は読み飛ばす。
+   */
   function parseText(text) {
     return text.split(/\r?\n/).map(line => {
-      const s = line.trim();
+      // 先頭の出席番号（「1 」「1.」「1、」「1）」やタブ・カンマ区切り）は読み飛ばす
+      const s = line.trim().replace(/^[0-9０-９]+(?:\s+|[.．、,，:：)）]\s*)/, '').trim();
       if (!s) return null;
-      if (s.includes('\t')) {
-        const cells = s.split('\t').map(x => x.trim()).filter(Boolean);
-        if (cells.length >= 2) return { last: cells[0], first: cells[1] };
+
+      // 「山田 太郎（やまだ たろう）」
+      const paren = s.match(/^(.*?)\s*[（(]\s*([^）)]*?)\s*[）)]\s*$/);
+      if (paren && isKanaText(paren[2])) {
+        const name = splitName(paren[1]);
+        return name && withKana(name, paren[2]);
+      }
+
+      const sep = s.includes('\t') ? '\t' : s.includes(',') ? ',' : null;
+      if (sep) {
+        const cells = s.split(sep).map(x => x.trim()).filter(Boolean);
+        while (cells.length > 1 && /^\d+$/.test(cells[0])) cells.shift();
+        if (cells.length >= 4) {
+          return { last: cells[0], first: cells[1], kanaLast: cells[2], kanaFirst: cells[3] };
+        }
+        if (cells.length === 3 && isKanaText(cells[2])) {
+          return withKana({ last: cells[0], first: cells[1] }, cells[2]);
+        }
+        if (cells.length >= 2) {
+          // 「氏名」「ふりがな」の2列
+          if (/\s/.test(cells[0]) && isKanaText(cells[1])) return withKana(splitName(cells[0]), cells[1]);
+          return { last: cells[0], first: cells[1] };
+        }
         return splitName(cells[0] || '');
       }
-      if (s.includes(',')) {
-        const cells = s.split(',').map(x => x.trim()).filter(Boolean);
-        if (cells.length >= 2) return { last: cells[0], first: cells[1] };
-        return splitName(cells[0] || '');
+
+      // 空白区切りで4つ：「山田 太郎 やまだ たろう」
+      const words = s.split(/\s+/);
+      if (words.length === 4 && isKanaText(words[2]) && isKanaText(words[3])) {
+        return { last: words[0], first: words[1], kanaLast: words[2], kanaFirst: words[3] };
       }
       return splitName(s);
     }).filter(Boolean);
@@ -689,8 +834,20 @@
   /* --- Excel取り込み --- */
 
   let workbook = null;
+  let grid = [];                  // 選んでいるシートの中身。grid[行][列] = { text, ph }
   const NONE = '__none__';
-  const HEADER_WORDS = ['姓', '名', '氏名', '名前', '苗字', '名字', 'せい', 'めい', 'name'];
+  const PHON = '__phonetic__';    // Excelに残っている読み（名前を入力したときの変換の読み）
+
+  // 見出し行かどうかの判定。生徒の名前（椎名、名取、かな など）を見出しと取り違えないよう、
+  // 見出しらしい言葉が「その欄まるごと」になっているときだけ見出しとみなす
+  const STRONG_HEAD = [
+    /^(出席)?番号$/, /^no\.?$/i,
+    /^(姓|名|氏|氏名|名前|苗字|名字|生徒名|児童名|生徒氏名|児童氏名|下の名前)([（(].*[）)])?$/,
+    /(ふりがな|フリガナ|ﾌﾘｶﾞﾅ|よみがな|ヨミガナ|読み仮名)/,
+    /^(姓|名|氏名|名前)[\s・_]*(かな|カナ|ｶﾅ|よみ|ヨミ|読み)$/
+  ];
+  // ふりがなの列の見出し（見出し行と分かったあとで使う）
+  const KANA_HEAD = /(ふりがな|フリガナ|ﾌﾘｶﾞﾅ|よみ|ヨミ|ﾖﾐ|読み|かな|カナ|ｶﾅ|ルビ)|^(せい|めい|セイ|メイ)$/;
 
   function colLabel(i) {
     let s = '';
@@ -699,12 +856,56 @@
     return s;
   }
 
-  function sheetRows(name) {
-    const ws = workbook.Sheets[name];
-    if (!ws) return [];
-    return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', blankrows: false })
-      .map(r => r.map(cell => String(cell == null ? '' : cell).trim()));
+  /**
+   * Excelのセルに残っている読みを取り出す（PHONETIC関数で出せるのと同じもの）。
+   * Excelで名前を手入力すると、変換したときの読みがセルに一緒に保存されている。
+   * SheetJSはそれをセルの r（元のXML）に残しているので、そこから組み立てる。
+   */
+  function phoneticOf(cell) {
+    if (!cell || cell.t !== 's' || typeof cell.r !== 'string' || !cell.r.includes('rPh')) return '';
+    const doc = new DOMParser().parseFromString('<si>' + cell.r + '</si>', 'application/xml');
+    if (doc.getElementsByTagName('parsererror').length) return '';
+    const si = doc.documentElement;
+    let base = '';
+    const runs = [];
+    for (const node of si.children) {
+      if (node.localName === 't') base += node.textContent;
+      else if (node.localName === 'r') for (const t of node.getElementsByTagName('t')) base += t.textContent;
+      else if (node.localName === 'rPh') {
+        runs.push({ sb: +node.getAttribute('sb'), eb: +node.getAttribute('eb'), t: node.textContent });
+      }
+    }
+    if (!runs.length) return '';
+    // 読みの付いていない文字（かなや空白）はそのまま残す
+    runs.sort((a, b) => a.sb - b.sb);
+    let out = '', pos = 0;
+    for (const r of runs) {
+      if (!(r.sb >= pos && r.eb >= r.sb)) continue;
+      out += base.slice(pos, r.sb) + r.t;
+      pos = r.eb;
+    }
+    return (out + base.slice(pos)).trim();
   }
+
+  /** シートを [行][列] の表にする。列の番号はExcelの列（A=0）にそろえる */
+  function sheetGrid(name) {
+    const ws = workbook.Sheets[name];
+    if (!ws || !ws['!ref']) return [];
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    const rows = [];
+    for (let r = range.s.r; r <= range.e.r; r++) {
+      const row = [];
+      for (let c = 0; c <= range.e.c; c++) {
+        const cell = ws[XLSX.utils.encode_cell({ r, c })];
+        const text = cell ? String(cell.w != null ? cell.w : (cell.v != null ? cell.v : '')).trim() : '';
+        row.push({ text, ph: phoneticOf(cell) });
+      }
+      if (row.some(x => x.text)) rows.push(row);
+    }
+    return rows;
+  }
+
+  const textAt = (row, i) => (row && row[i] && row[i].text) || '';
 
   function openExcel(file) {
     const reader = new FileReader();
@@ -732,90 +933,145 @@
     reader.readAsArrayBuffer(file);
   }
 
-  /** シートを見て、姓・名の列と見出し行を推測する */
-  function setupColumns() {
-    const rows = sheetRows(el.sheetSelect.value);
-    const width = rows.reduce((m, r) => Math.max(m, r.length), 0);
+  /** 見出しと中身から、姓・名・ふりがなの列を推測する */
+  function guessColumns(rows, width) {
+    const head = (rows[0] || []).map(x => x.text);
+    const looksHeader = head.some(h => h && STRONG_HEAD.some(re => re.test(h)));
+    const body = (looksHeader ? rows.slice(1) : rows).slice(0, 15);
 
-    // 見出し行かどうかを先に判定しておく（列の例示に見出し語を出さないため）
-    const head = rows[0] || [];
-    const looksHeader = head.some(cell =>
-      HEADER_WORDS.some(w => cell && cell.toLowerCase().includes(w)));
-    const sampleRows = looksHeader ? rows.slice(1) : rows;
+    // 中身で分ける：数字だけの列（出席番号）、かなだけの列（ふりがな）、それ以外（名前）
+    const filled = i => body.map(r => textAt(r, i)).filter(Boolean);
+    const ratio = (i, test) => { const v = filled(i); return v.length ? v.filter(test).length / v.length : 0; };
+    const cols = [...Array(width).keys()].filter(i => filled(i).length);
+    const numCols = cols.filter(i => ratio(i, v => /^\d+$/.test(v)) >= 0.8);
+    const kanaCols = cols.filter(i => !numCols.includes(i) && ratio(i, isKanaText) >= 0.8);
+    const nameCols = cols.filter(i => !numCols.includes(i) && !kanaCols.includes(i));
 
-    const fill = (sel, withNone) => {
-      sel.innerHTML = '';
-      if (withNone) {
-        const o = document.createElement('option');
-        o.value = NONE; o.textContent = '（なし）';
-        sel.appendChild(o);
+    const g = {
+      looksHeader,
+      last: nameCols.length ? nameCols[0] : 0,
+      first: nameCols.length > 1 ? nameCols[1] : NONE,
+      kanaLast: kanaCols.length ? kanaCols[0] : NONE,
+      kanaFirst: kanaCols.length > 1 ? kanaCols[1] : NONE
+    };
+
+    if (looksHeader) {
+      const isKana = h => KANA_HEAD.test(h);
+      const at = test => head.findIndex(h => !!h && test(h));
+      const li = at(h => !isKana(h) && /^(姓|名字|苗字|氏)([（(].*[）)])?$/.test(h));
+      const fi = at(h => !isKana(h) && /^(名|下の名前)([（(].*[）)])?$/.test(h));
+      const full = at(h => !isKana(h) && /(氏名|名前|生徒名|児童名)/.test(h));
+      if (li >= 0) { g.last = li; g.first = fi >= 0 ? fi : NONE; }
+      else if (full >= 0) { g.last = full; g.first = NONE; }
+
+      const kli = at(h => isKana(h) && (/(姓|苗字|名字|せい|セイ)/.test(h) || /氏(?!名)/.test(h)));
+      const kfi = at(h => isKana(h) && (/(めい|メイ)/.test(h) || /(^|[^氏])名(?!前)/.test(h)));
+      const kfull = head.findIndex((h, i) => !!h && isKana(h) && i !== kli && i !== kfi);
+      if (kli >= 0 || kfi >= 0) {
+        g.kanaLast = kli >= 0 ? kli : NONE;
+        g.kanaFirst = kfi >= 0 ? kfi : NONE;
+      } else if (kfull >= 0) {
+        g.kanaLast = kfull; g.kanaFirst = NONE;
       }
-      for (let i = 0; i < width; i++) {
-        const sample = sampleRows.slice(0, 4).map(r => r[i]).filter(Boolean)[0] || '';
+    }
+
+    // ふりがなの列が無く、名前のセルにExcelの読みが残っていれば、それを使う
+    const hasPh = i => i !== NONE && body.some(r => r[i] && r[i].ph);
+    if (g.kanaLast === NONE && g.kanaFirst === NONE && (hasPh(g.last) || hasPh(g.first))) {
+      g.kanaLast = PHON;
+      g.kanaFirst = g.first !== NONE ? PHON : NONE;
+    }
+    return g;
+  }
+
+  function setupColumns() {
+    grid = sheetGrid(el.sheetSelect.value);
+    const width = grid.reduce((m, r) => Math.max(m, r.length), 0);
+    const g = guessColumns(grid, width);
+    const sampleRows = g.looksHeader ? grid.slice(1) : grid;
+    const anyPh = sampleRows.some(r => r.some(x => x.ph));
+
+    const fill = (sel, { none, phon }) => {
+      sel.innerHTML = '';
+      const add = (value, label) => {
         const o = document.createElement('option');
-        o.value = String(i);
-        o.textContent = sample ? `${colLabel(i)}列（${sample}…）` : `${colLabel(i)}列`;
+        o.value = value; o.textContent = label;
         sel.appendChild(o);
+      };
+      if (none) add(NONE, '（なし）');
+      if (phon && anyPh) add(PHON, 'Excelに残っている読み');
+      for (let i = 0; i < width; i++) {
+        const head = g.looksHeader ? textAt(grid[0], i) : '';
+        const sample = sampleRows.slice(0, 4).map(r => textAt(r, i)).filter(Boolean)[0] || '';
+        const hint = [head, sample].filter(Boolean).join('：');
+        add(String(i), hint ? `${colLabel(i)}列（${hint}…）` : `${colLabel(i)}列`);
       }
     };
-    fill(el.lastColSelect, false);
-    fill(el.firstColSelect, true);
+    fill(el.lastColSelect, {});
+    fill(el.firstColSelect, { none: true });
+    fill(el.kanaLastColSelect, { none: true, phon: true });
+    fill(el.kanaFirstColSelect, { none: true, phon: true });
 
-    el.skipHeader.checked = looksHeader;
-
-    // 列の推測
-    let lastIdx = 0, firstIdx = width >= 2 ? 1 : NONE;
-    if (looksHeader) {
-      const li = head.findIndex(c => /^(姓|名字|苗字|氏)$/.test(c));
-      const fi = head.findIndex(c => /^(名|下の名前)$/.test(c));
-      if (li >= 0) lastIdx = li;
-      if (fi >= 0) firstIdx = fi;
-    } else if (width >= 2) {
-      // 2列目が空ばかりなら「なし」にしておく
-      const body = rows.slice(0, 10);
-      const hasSecond = body.some(r => (r[1] || '').trim() !== '');
-      if (!hasSecond) firstIdx = NONE;
-    }
-    el.lastColSelect.value = String(lastIdx);
-    el.firstColSelect.value = firstIdx === NONE ? NONE : String(firstIdx);
+    el.skipHeader.checked = g.looksHeader;
+    el.lastColSelect.value = String(g.last);
+    el.firstColSelect.value = String(g.first);
+    el.kanaLastColSelect.value = String(g.kanaLast);
+    el.kanaFirstColSelect.value = String(g.kanaFirst);
 
     renderPreview();
   }
 
   function excelRows() {
-    const rows = sheetRows(el.sheetSelect.value);
-    const body = el.skipHeader.checked ? rows.slice(1) : rows;
+    const body = el.skipHeader.checked ? grid.slice(1) : grid;
     const li = parseInt(el.lastColSelect.value, 10);
     const fv = el.firstColSelect.value;
     const fi = fv === NONE ? -1 : parseInt(fv, 10);
+    const kl = el.kanaLastColSelect.value;
+    const kf = el.kanaFirstColSelect.value;
 
     return body.map(r => {
-      const a = (r[li] || '').trim();
-      const b = fi >= 0 ? (r[fi] || '').trim() : '';
-      if (!a && !b) return null;
+      const a = r[li] || { text: '', ph: '' };
+      const b = fi >= 0 ? (r[fi] || { text: '', ph: '' }) : { text: '', ph: '' };
+      if (!a.text && !b.text) return null;
       // 名の列を使わないときは、1つのセルに入ったフルネームを姓と名に分ける
-      if (fi < 0) return splitName(a);
-      return { last: a, first: b };
+      const name = fi < 0 ? splitName(a.text) : { last: a.text, first: b.text };
+      if (!name) return null;
+
+      const from = (v, cell) => v === PHON ? cell.ph : v === NONE ? '' : textAt(r, parseInt(v, 10));
+      // 名の読みの指定が無いとき（または氏名が1つのセルのとき）は、読みを空白で姓・名に分ける
+      const row = (kf === NONE || (kf === PHON && fi < 0))
+        ? withKana(name, from(kl, a))
+        : { last: name.last, first: name.first, kanaLast: from(kl, a), kanaFirst: from(kf, b) };
+      // Excelの読みは中身がカタカナで入っているので、確認画面に出す文字（＝設定の文字）にそろえて取り込む
+      row.kanaLast = styleKana(row.kanaLast);
+      row.kanaFirst = styleKana(row.kanaFirst);
+      return row;
     }).filter(Boolean);
   }
 
   function renderPreview() {
     const rows = excelRows();
     el.previewTable.innerHTML =
-      '<thead><tr><th class="col-no">#</th><th>姓</th><th>名</th></tr></thead>';
+      '<thead><tr><th class="col-no">#</th><th>姓</th><th>名</th><th>せい</th><th>めい</th></tr></thead>';
     const tb = document.createElement('tbody');
     rows.slice(0, 60).forEach((r, i) => {
       const tr = document.createElement('tr');
-      tr.innerHTML =
-        `<td class="col-no">${i + 1}</td><td></td><td></td>`;
-      tr.children[1].textContent = r.last;
-      tr.children[2].textContent = r.first;
+      [String(i + 1), r.last, r.first, r.kanaLast, r.kanaFirst].forEach((v, k) => {
+        const td = document.createElement('td');
+        if (k === 0) td.className = 'col-no';
+        if (k >= 3) td.className = 'col-kana';
+        td.textContent = v || '';
+        tr.appendChild(td);
+      });
       tb.appendChild(tr);
     });
     el.previewTable.appendChild(tb);
+
+    const withKanaCount = rows.filter(r => r.kanaLast || r.kanaFirst).length;
     el.previewSummary.textContent = rows.length
-      ? `${rows.length}人を取り込みます${rows.length > 60 ? '（表示は先頭60人）' : ''}`
+      ? `${rows.length}人を取り込みます（ふりがなあり ${withKanaCount}人）${rows.length > 60 ? '・表示は先頭60人' : ''}`
       : '取り込める行が見つかりません。列の指定を変えてみてください。';
+    el.phoneticNote.hidden = !(el.kanaLastColSelect.value === PHON || el.kanaFirstColSelect.value === PHON);
   }
 
   /* ---------------- イベント ---------------- */
@@ -855,6 +1111,19 @@
     refreshSpin();
   });
 
+  el.optFurigana.addEventListener('change', () => {
+    state.settings.furigana = el.optFurigana.checked;
+    el.optKanaStyle.disabled = !el.optFurigana.checked;
+    save();
+    refreshSpin();
+  });
+
+  el.optKanaStyle.addEventListener('change', () => {
+    state.settings.kanaStyle = el.optKanaStyle.value;
+    save();
+    refreshSpin();
+  });
+
   el.resetBtn.addEventListener('click', () => {
     const c = activeClass();
     if (!c) return;
@@ -862,7 +1131,7 @@
     historyOrder.delete(c.id);
     rotation = 0;
     applyRotation();
-    el.resultName.textContent = '—';
+    showResultText('—');
     el.resultCard.classList.remove('is-hit');
     el.skipBtn.hidden = true;
     refreshSpin();
@@ -923,6 +1192,8 @@
   el.sheetSelect.addEventListener('change', setupColumns);
   el.lastColSelect.addEventListener('change', renderPreview);
   el.firstColSelect.addEventListener('change', renderPreview);
+  el.kanaLastColSelect.addEventListener('change', renderPreview);
+  el.kanaFirstColSelect.addEventListener('change', renderPreview);
   el.skipHeader.addEventListener('change', renderPreview);
 
   el.excelCancel.addEventListener('click', () => el.excelDialog.close());
@@ -1142,6 +1413,9 @@
   el.optRemove.checked = state.settings.removeAfterPick;
   el.optSound.checked = state.settings.sound;
   el.optDisplay.value = state.settings.display;
+  el.optFurigana.checked = state.settings.furigana;
+  el.optKanaStyle.value = state.settings.kanaStyle;
+  el.optKanaStyle.disabled = !state.settings.furigana;
   renderAll();
   showBuildStamp();
   initServiceWorker();

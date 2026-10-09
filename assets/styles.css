@@ -203,6 +203,14 @@ body {
   word-break: break-word;
   min-height: 1.25em;
 }
+/* ふりがな。漢字の上に小さく出す。行の高さを広げて、上の「今回の指名」と重ならないようにする */
+.result-name.has-ruby { line-height: 1.75; }
+.result-name rt {
+  font-size: .4em;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: var(--ink-soft);
+}
 .result-card.is-hit { animation: pop .5s ease; }
 @keyframes pop {
   0%   { transform: scale(.9); }
@@ -274,6 +282,10 @@ body {
 
 .field { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; font-size: 13px; }
 .field > span, .field > label { font-weight: 600; color: var(--ink-soft); }
+/* 見出しと選択欄を横に並べる（設定パネルの「ふりがなの文字」） */
+.field-row { flex-direction: row; align-items: center; justify-content: space-between; margin-top: 4px; }
+.field-row select { min-width: 0; padding: 5px 10px; }
+.field-row select:disabled { opacity: .5; cursor: default; }
 
 .muted { color: var(--ink-soft); font-size: 13px; margin: 8px 0 0; }
 
@@ -353,6 +365,8 @@ table.roster th {
 }
 .col-no { width: 46px; color: var(--ink-soft); }
 .col-ex { width: 72px; text-align: center; }
+table.roster .col-kana { color: var(--ink-soft); }
+table.roster td.col-kana input[type="text"] { font-size: 13px; }
 .col-del { width: 44px; }
 table.roster td.col-ex { text-align: center; }
 table.roster input[type="text"] {
@@ -502,8 +516,9 @@ tr.is-excluded input[type="text"] { color: var(--ink-soft); }
 body.is-spotlight .stage { grid-template-columns: 1fr; }
 body.is-spotlight .panel { display: none; }
 body.is-spotlight .view { padding: 14px 24px 20px; }
-/* 盤と結果カードが1画面に収まるよう、盤の大きさを画面の高さから決める */
-body.is-spotlight .wheel-wrap { max-width: min(calc(100vh - 300px), 760px); }
+/* 盤と結果カードが1画面に収まるよう、盤の大きさを画面の高さから決める
+   （結果の名前の上に、ふりがなが出る分の高さも見込んでおく） */
+body.is-spotlight .wheel-wrap { max-width: min(calc(100vh - 360px), 760px); }
 body.is-spotlight .stage { gap: 16px; }
 body.is-spotlight .side { width: 100%; max-width: 760px; margin: 0 auto; }
 body.is-spotlight .result-card { padding: 12px 20px; }
