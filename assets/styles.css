@@ -278,7 +278,13 @@ body {
   cursor: pointer;
   user-select: none;
 }
-.switch input { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
+.switch input { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; flex: none; }
+.switch small { display: block; font-size: 11px; color: var(--ink-soft); line-height: 1.4; }
+/* 「名前の表示」に付属する設定。名のみ以外では効かないので薄くする */
+.switch-sub { align-items: flex-start; }
+.switch-sub input { margin-top: 3px; }
+.switch:has(input:disabled) { cursor: default; }
+.switch input:disabled, .switch input:disabled + span { opacity: .45; cursor: default; }
 
 .field { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; font-size: 13px; }
 .field > span, .field > label { font-weight: 600; color: var(--ink-soft); }

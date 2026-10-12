@@ -9,7 +9,7 @@
 
   // ★ 公開のたびに、この値と service-worker.js の VERSION を「同じ値」に変えること。
   //    食い違うと「表示中のファイルが古いようです」の案内が出る（それが食い違い検知のしくみ）。
-  const APP_VERSION = '20261009a';
+  const APP_VERSION = '20261012a';
 
   /* 更新内容は release-notes.json に置く（サーバ上の最新をそのつど読む）。
      公開のたびに、いちばん上へ今回の版の項目を足すこと。 */
@@ -20,7 +20,10 @@
   const defaultState = () => ({
     version: 1,
     activeClassId: null,
-    settings: { removeAfterPick: true, sound: true, display: 'full', furigana: true, kanaStyle: 'hira' },
+    settings: {
+      removeAfterPick: true, sound: true, display: 'full', furigana: true, kanaStyle: 'hira',
+      lastIfSameFirst: false
+    },
     classes: []
   });
 
@@ -148,9 +151,29 @@
     return parts.filter(p => p[0]).map(([text, kana]) => ({ text, kana: rubyFor(text, kana) }));
   }
 
+  /** 名の読み。ふりがなが無ければ名そのもの（かなの名前は、それがそのまま読みになる） */
+  function firstReading(st) {
+    const kf = (st.kanaFirst || '').trim();
+    return toHira(kf || (st.first || '').trim()).replace(/\s/g, '');
+  }
+
+  /**
+   * 当たった生徒の名前をどの形で出すか。
+   * 「名のみ」のとき、クラスに名の読みが同じ生徒がいれば（優希・勇気 の「ゆうき」など）、
+   * 名だけでは誰のことか分からないので姓も出す。設定でオンにしたときだけ。
+   */
+  function announceMode(st) {
+    if (state.settings.display !== 'first' || !state.settings.lastIfSameFirst) return undefined;
+    if (!(st.last || '').trim() || !(st.first || '').trim()) return undefined;
+    const c = activeClass();
+    const key = firstReading(st);
+    const same = !!c && !!key && c.students.some(o => o !== st && firstReading(o) === key);
+    return same ? 'full' : undefined;
+  }
+
   /** 要素の中に、ふりがな付きの名前を入れる */
-  function renderName(target, st) {
-    const parts = nameParts(st);
+  function renderName(target, st, mode) {
+    const parts = nameParts(st, mode);
     target.textContent = '';
     parts.forEach((p, i) => {
       if (i) target.append(' ');
@@ -174,14 +197,18 @@
     if (!c) return [];
     const picked = pickedSet();
     return c.students.filter(st => {
-      if (state.settings.removeAfterPick && picked.has(st.id)) return false;
+      // 当たった人は盤から外すが、結果を出している間は残しておく。
+      // 結果を出したあとに設定を変えて盤を描き直しても、針が当たった人を指したままになるように
+      if (state.settings.removeAfterPick && picked.has(st.id) && st.id !== resultId) return false;
       return displayName(st) !== '';
     });
   }
 
   /** 実際に当選しうる生徒。盤に並んでいても「対象外」の生徒はここに入らない */
   function eligible() {
-    return wheelEntries().filter(st => !st.excluded);
+    const picked = pickedSet();
+    return wheelEntries().filter(st =>
+      !st.excluded && !(state.settings.removeAfterPick && picked.has(st.id)));
   }
 
   /* ---------------- 要素 ---------------- */
@@ -200,6 +227,7 @@
     optRemove: $('#optRemove'),
     optSound: $('#optSound'),
     optDisplay: $('#optDisplay'),
+    optLastIfSame: $('#optLastIfSame'),
     optFurigana: $('#optFurigana'),
     optKanaStyle: $('#optKanaStyle'),
     remainCount: $('#remainCount'),
@@ -411,7 +439,7 @@
     if (!resultId) return;
     const c = activeClass();
     const st = c && c.students.find(x => x.id === resultId);
-    if (st) renderName(el.resultName, st);
+    if (st) renderName(el.resultName, st, announceMode(st));
     else showResultText('—');
   }
 
@@ -422,6 +450,7 @@
 
   function spin() {
     if (spinning) return;
+    resultId = null;   // 結果欄の人も、ここからは盤から外す対象になる（下の drawWheel で外れる）
     const list = wheelEntries();
     const pool = eligible();
     if (pool.length === 0) {
@@ -541,7 +570,7 @@
       const st = byId.get(id);
       if (!st) return;
       const li = document.createElement('li');
-      li.textContent = displayName(st);
+      li.textContent = displayName(st, announceMode(st));   // 発表したときと同じ形で残す
       el.history.appendChild(li);
     });
 
@@ -1107,6 +1136,13 @@
 
   el.optDisplay.addEventListener('change', () => {
     state.settings.display = el.optDisplay.value;
+    el.optLastIfSame.disabled = el.optDisplay.value !== 'first';
+    save();
+    refreshSpin();
+  });
+
+  el.optLastIfSame.addEventListener('change', () => {
+    state.settings.lastIfSameFirst = el.optLastIfSame.checked;
     save();
     refreshSpin();
   });
@@ -1413,6 +1449,8 @@
   el.optRemove.checked = state.settings.removeAfterPick;
   el.optSound.checked = state.settings.sound;
   el.optDisplay.value = state.settings.display;
+  el.optLastIfSame.checked = state.settings.lastIfSameFirst;
+  el.optLastIfSame.disabled = state.settings.display !== 'first';
   el.optFurigana.checked = state.settings.furigana;
   el.optKanaStyle.value = state.settings.kanaStyle;
   el.optKanaStyle.disabled = !state.settings.furigana;
